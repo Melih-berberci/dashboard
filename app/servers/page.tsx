@@ -296,6 +296,27 @@ export default function ServersPage() {
                 />
               </div>
               
+              {/* Bot Invite Button */}
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => {
+                  const botClientId = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
+                  if (!botClientId) {
+                    toast.error("Bot yapılandırılmamış");
+                    return;
+                  }
+                  // Minimum required permissions for logging
+                  const permissions = "1099511627775"; // Admin permissions
+                  const scopes = "bot%20applications.commands";
+                  const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${botClientId}&permissions=${permissions}&scope=${scopes}`;
+                  window.open(inviteUrl, "_blank");
+                }}
+              >
+                <Bot className="h-4 w-4" />
+                <span className="hidden sm:inline">Botu Davet Et</span>
+              </Button>
+
               <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setServerIdInput(""); setServerNameInput(""); } }}>
                 <DialogTrigger asChild>
                   <Button className="gap-2">
