@@ -301,13 +301,7 @@ export default function ServersPage() {
                 variant="outline"
                 className="gap-2"
                 onClick={() => {
-                  // Bot Client ID
-                  const botClientId = "1418210735636480010";
-                  // Safe permissions: View Channels (1024) + Read Message History (65536) + View Audit Log (128) = 66688
-                  const permissions = "66688";
-                  const scopes = "bot%20applications.commands";
-                  const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${botClientId}&permissions=${permissions}&scope=${scopes}`;
-                  window.open(inviteUrl, "_blank");
+                  window.open("https://discord.com/oauth2/authorize?client_id=1418210735636480010", "_blank");
                 }}
               >
                 <Bot className="h-4 w-4" />
