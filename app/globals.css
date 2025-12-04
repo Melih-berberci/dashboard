@@ -1,0 +1,341 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 3.9%;
+    --foreground: 180 100% 90%;
+    --card: 240 10% 6%;
+    --card-foreground: 180 100% 90%;
+    --popover: 240 10% 6%;
+    --popover-foreground: 180 100% 90%;
+    --primary: 180 100% 50%;
+    --primary-foreground: 240 10% 3.9%;
+    --secondary: 300 100% 50%;
+    --secondary-foreground: 240 10% 3.9%;
+    --muted: 240 10% 12%;
+    --muted-foreground: 180 30% 60%;
+    --accent: 300 100% 50%;
+    --accent-foreground: 240 10% 3.9%;
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 180 50% 20%;
+    --input: 240 10% 12%;
+    --ring: 180 100% 50%;
+    --radius: 0.5rem;
+    
+    /* Cyberpunk custom colors */
+    --neon-cyan: 180 100% 50%;
+    --neon-pink: 320 100% 60%;
+    --neon-purple: 270 100% 60%;
+    --neon-yellow: 60 100% 50%;
+    --neon-green: 120 100% 50%;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 180 100% 90%;
+    --card: 240 10% 6%;
+    --card-foreground: 180 100% 90%;
+    --popover: 240 10% 6%;
+    --popover-foreground: 180 100% 90%;
+    --primary: 180 100% 50%;
+    --primary-foreground: 240 10% 3.9%;
+    --secondary: 300 100% 50%;
+    --secondary-foreground: 240 10% 3.9%;
+    --muted: 240 10% 12%;
+    --muted-foreground: 180 30% 60%;
+    --accent: 300 100% 50%;
+    --accent-foreground: 240 10% 3.9%;
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 180 50% 20%;
+    --input: 240 10% 12%;
+    --ring: 180 100% 50%;
+    
+    /* Cyberpunk custom colors */
+    --neon-cyan: 180 100% 50%;
+    --neon-pink: 320 100% 60%;
+    --neon-purple: 270 100% 60%;
+    --neon-yellow: 60 100% 50%;
+    --neon-green: 120 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom scrollbar - Cyberpunk style */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(240 10% 6%);
+  border-left: 1px solid hsl(180 100% 50% / 0.2);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, hsl(180 100% 50% / 0.5), hsl(300 100% 50% / 0.5));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, hsl(180 100% 50% / 0.8), hsl(300 100% 50% / 0.8));
+}
+
+/* Cyberpunk gradient backgrounds */
+.cyber-gradient {
+  background: linear-gradient(135deg, hsl(180 100% 50%) 0%, hsl(300 100% 50%) 100%);
+}
+
+.cyber-gradient-dark {
+  background: linear-gradient(135deg, hsl(180 100% 50% / 0.1) 0%, hsl(300 100% 50% / 0.1) 100%);
+}
+
+.card-gradient {
+  background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(240 10% 8%) 100%);
+  border: 1px solid hsl(180 100% 50% / 0.2);
+}
+
+/* Neon glow effects */
+.neon-glow {
+  box-shadow: 0 0 5px hsl(180 100% 50% / 0.5),
+              0 0 10px hsl(180 100% 50% / 0.3),
+              0 0 20px hsl(180 100% 50% / 0.2);
+}
+
+.neon-glow-pink {
+  box-shadow: 0 0 5px hsl(320 100% 60% / 0.5),
+              0 0 10px hsl(320 100% 60% / 0.3),
+              0 0 20px hsl(320 100% 60% / 0.2);
+}
+
+.neon-text {
+  text-shadow: 0 0 5px hsl(180 100% 50% / 0.8),
+               0 0 10px hsl(180 100% 50% / 0.5),
+               0 0 20px hsl(180 100% 50% / 0.3);
+}
+
+.neon-text-pink {
+  text-shadow: 0 0 5px hsl(320 100% 60% / 0.8),
+               0 0 10px hsl(320 100% 60% / 0.5),
+               0 0 20px hsl(320 100% 60% / 0.3);
+}
+
+/* Cyberpunk border effects */
+.cyber-border {
+  border: 1px solid hsl(180 100% 50% / 0.3);
+  position: relative;
+}
+
+.cyber-border::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  bottom: -1px;
+  background: linear-gradient(90deg, hsl(180 100% 50%), hsl(300 100% 50%), hsl(180 100% 50%));
+  background-size: 200% 100%;
+  z-index: -1;
+  animation: borderGlow 3s linear infinite;
+  opacity: 0.5;
+  border-radius: inherit;
+}
+
+@keyframes borderGlow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+/* Glitch effect */
+.glitch {
+  position: relative;
+}
+
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.glitch::before {
+  animation: glitch-1 0.3s infinite linear alternate-reverse;
+  color: hsl(180 100% 50%);
+  clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+  transform: translate(-2px);
+}
+
+.glitch::after {
+  animation: glitch-2 0.3s infinite linear alternate-reverse;
+  color: hsl(320 100% 60%);
+  clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%);
+  transform: translate(2px);
+}
+
+@keyframes glitch-1 {
+  0% { transform: translate(0); }
+  20% { transform: translate(-2px, 2px); }
+  40% { transform: translate(-2px, -2px); }
+  60% { transform: translate(2px, 2px); }
+  80% { transform: translate(2px, -2px); }
+  100% { transform: translate(0); }
+}
+
+@keyframes glitch-2 {
+  0% { transform: translate(0); }
+  20% { transform: translate(2px, -2px); }
+  40% { transform: translate(2px, 2px); }
+  60% { transform: translate(-2px, -2px); }
+  80% { transform: translate(-2px, 2px); }
+  100% { transform: translate(0); }
+}
+
+/* Scanline effect */
+.scanlines {
+  position: relative;
+  overflow: hidden;
+}
+
+.scanlines::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    hsl(180 100% 50% / 0.03) 2px,
+    hsl(180 100% 50% / 0.03) 4px
+  );
+  pointer-events: none;
+}
+
+/* Loading animations */
+.loading-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .5;
+  }
+}
+
+/* Cyber flicker */
+@keyframes flicker {
+  0%, 19.999%, 22%, 62.999%, 64%, 64.999%, 70%, 100% {
+    opacity: 1;
+  }
+  20%, 21.999%, 63%, 63.999%, 65%, 69.999% {
+    opacity: 0.4;
+  }
+}
+
+.flicker {
+  animation: flicker 3s infinite;
+}
+
+/* Matrix rain effect background */
+.matrix-bg {
+  background-image: 
+    radial-gradient(ellipse at top, hsl(180 100% 50% / 0.1), transparent 50%),
+    radial-gradient(ellipse at bottom, hsl(300 100% 50% / 0.1), transparent 50%);
+}
+
+/* Smooth transitions */
+.transition-theme {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Discord button cyberpunk style */
+.discord-gradient {
+  background: linear-gradient(135deg, #5865F2 0%, #7289DA 100%);
+}
+
+/* Cyber card hover effect */
+.cyber-card {
+  transition: all 0.3s ease;
+  background: hsl(240 10% 6%);
+  border: 1px solid hsl(180 100% 50% / 0.2);
+}
+
+.cyber-card:hover {
+  border-color: hsl(180 100% 50% / 0.5);
+  box-shadow: 0 0 20px hsl(180 100% 50% / 0.2),
+              inset 0 0 20px hsl(180 100% 50% / 0.05);
+  transform: translateY(-2px);
+}
+
+/* Input cyber style */
+.cyber-input {
+  background: hsl(240 10% 8%);
+  border: 1px solid hsl(180 100% 50% / 0.3);
+  transition: all 0.3s ease;
+}
+
+.cyber-input:focus {
+  border-color: hsl(180 100% 50%);
+  box-shadow: 0 0 10px hsl(180 100% 50% / 0.3);
+  outline: none;
+}
+
+/* Button cyber variants */
+.btn-cyber {
+  background: linear-gradient(135deg, hsl(180 100% 50%), hsl(180 100% 40%));
+  color: hsl(240 10% 3.9%);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border: none;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.btn-cyber::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.btn-cyber:hover::before {
+  left: 100%;
+}
+
+.btn-cyber:hover {
+  box-shadow: 0 0 20px hsl(180 100% 50% / 0.5);
+  transform: translateY(-2px);
+}
+
+.btn-cyber-pink {
+  background: linear-gradient(135deg, hsl(320 100% 60%), hsl(320 100% 50%));
+}
+
+.btn-cyber-pink:hover {
+  box-shadow: 0 0 20px hsl(320 100% 60% / 0.5);
+}
