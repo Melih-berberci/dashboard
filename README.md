@@ -32,25 +32,8 @@ npm install
 cp .env.example .env
 ```
 
-```env
-# Discord OAuth2
-DISCORD_CLIENT_ID=your_discord_client_id
-DISCORD_CLIENT_SECRET=your_discord_client_secret
-DISCORD_BOT_TOKEN=your_bot_token
 
-# NextAuth
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your_nextauth_secret_key_here
 
-# MongoDB
-MONGODB_URI=mongodb://localhost:27017/discord-dashboard
-
-# Backend API
-BACKEND_URL=http://localhost:5000
-
-# Admin User IDs (comma separated Discord User IDs)
-ADMIN_USER_IDS=123456789012345678
-```
 
 ### 3. Discord Developer Portal Ayarları
 
