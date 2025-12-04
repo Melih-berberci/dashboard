@@ -152,13 +152,31 @@ export default function ServersPage() {
 
     setAddingServer(true);
     try {
-      // Save to database directly without requiring bot
+      let guildName = serverNameInput.trim() || `Sunucu ${serverIdInput.trim()}`;
+      let guildIcon: string | null = null;
+      let botPresent = false;
+
+      // Try to fetch from bot API first (if bot is in server)
+      try {
+        const botResponse = await fetch(`/api/guilds/${serverIdInput.trim()}`);
+        if (botResponse.ok) {
+          const botData = await botResponse.json();
+          guildName = botData.name || guildName;
+          guildIcon = botData.icon;
+          botPresent = true;
+        }
+      } catch {
+        // Bot not present, continue with manual data
+      }
+
+      // Save to database
       const response = await fetch("/api/user/guilds", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           guildId: serverIdInput.trim(),
-          guildName: serverNameInput.trim() || `Sunucu ${serverIdInput.trim()}`,
+          guildName: guildName,
+          guildIcon: guildIcon,
         }),
       });
 
@@ -171,19 +189,24 @@ export default function ServersPage() {
 
       const newGuild: Guild = {
         id: serverIdInput.trim(),
-        name: serverNameInput.trim() || `Sunucu ${serverIdInput.trim()}`,
-        icon: null,
+        name: guildName,
+        icon: guildIcon,
         owner: false,
         permissions: "0",
         features: [],
-        botPresent: false,
+        botPresent: botPresent,
       };
 
       setManualServers(prev => [...prev, newGuild]);
       setServerIdInput("");
       setServerNameInput("");
       setDialogOpen(false);
-      toast.success(`${newGuild.name} sunucusu eklendi!`);
+      
+      if (botPresent) {
+        toast.success(`${guildName} sunucusu eklendi! (Bot aktif - canlı veri alınabilir)`);
+      } else {
+        toast.success(`${guildName} sunucusu eklendi!`);
+      }
     } catch (error) {
       toast.error("Sunucu eklenirken bir hata oluştu");
     } finally {
@@ -284,7 +307,7 @@ export default function ServersPage() {
                   <DialogHeader>
                     <DialogTitle>Sunucu Ekle</DialogTitle>
                     <DialogDescription>
-                      Sunucu ID'sini ve adını girerek sunucuyu dashboard'a ekleyebilirsiniz.
+                      Sunucu ID'sini girerek sunucuyu dashboard'a ekleyebilirsiniz. Bot sunucudaysa canlı veri ve loglar alınabilir.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
