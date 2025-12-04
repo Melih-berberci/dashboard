@@ -45,8 +45,6 @@ interface AuthState {
   setToken: (token: string | null) => void;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -58,7 +56,7 @@ export const useAuthStore = create<AuthState>()(
       login: async (username: string, password: string) => {
         set({ isLoading: true });
         try {
-          const response = await fetch(`${API_URL}/api/auth/login`, {
+          const response = await fetch(`/api/admin/auth/login`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -101,7 +99,7 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isLoading: true });
         try {
-          const response = await fetch(`${API_URL}/api/auth/me`, {
+          const response = await fetch(`/api/admin/auth/me`, {
             headers: {
               Authorization: `Bearer ${token}`,
             },
