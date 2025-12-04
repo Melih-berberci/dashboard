@@ -3,7 +3,11 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const { Server } = require('socket.io');
 const http = require('http');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
+
+const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-production';
 
 const app = express();
 const server = http.createServer(app);
@@ -37,11 +41,15 @@ const connectDB = async () => {
   }
 };
 
-connectDB();
+connectDB().then(() => {
+  createInitialSuperAdmin();
+});
 
 // Guild Settings Schema
 const guildSettingsSchema = new mongoose.Schema({
   guildId: { type: String, required: true, unique: true },
+  guildName: { type: String, default: '' },
+  guildIcon: { type: String, default: null },
   prefix: { type: String, default: '!' },
   language: { type: String, default: 'tr' },
   modules: {
@@ -89,6 +97,136 @@ const logSchema = new mongoose.Schema({
 
 const Log = mongoose.model('Log', logSchema);
 
+// User Schema with Roles and Permissions
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  role: { 
+    type: String, 
+    enum: ['super_admin', 'admin', 'user'], 
+    default: 'user' 
+  },
+  // Discord bağlantısı (opsiyonel)
+  discordId: { type: String, unique: true, sparse: true },
+  discordUsername: { type: String },
+  avatar: { type: String },
+  // Kullanıcının erişebildiği sunucular
+  guilds: [{
+    guildId: { type: String, required: true },
+    guildName: { type: String },
+    guildIcon: { type: String },
+    // Bu kullanıcının bu sunucuda görebildiği modüller
+    permissions: {
+      dashboard: { type: Boolean, default: true },
+      logs: { type: Boolean, default: false },
+      moderation: { type: Boolean, default: false },
+      welcome: { type: Boolean, default: false },
+      leveling: { type: Boolean, default: false },
+      tickets: { type: Boolean, default: false },
+      commands: { type: Boolean, default: false },
+      settings: { type: Boolean, default: false },
+    }
+  }],
+  isActive: { type: Boolean, default: true },
+  lastLogin: { type: Date },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
+// Şifre hash'leme
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  this.password = await bcrypt.hash(this.password, 12);
+  next();
+});
+
+// Şifre kontrol metodu
+userSchema.methods.comparePassword = async function(candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
+
+const User = mongoose.model('User', userSchema);
+
+// İlk Süper Admin oluştur (eğer yoksa)
+const createInitialSuperAdmin = async () => {
+  try {
+    const existingSuperAdmin = await User.findOne({ role: 'super_admin' });
+    if (!existingSuperAdmin) {
+      const superAdmin = new User({
+        username: process.env.SUPER_ADMIN_USERNAME || 'admin',
+        email: process.env.SUPER_ADMIN_EMAIL || 'admin@localhost.com',
+        password: process.env.SUPER_ADMIN_PASSWORD || 'admin123',
+        role: 'super_admin',
+        isActive: true,
+      });
+      await superAdmin.save();
+      console.log('✅ Süper Admin oluşturuldu:', superAdmin.username);
+    }
+  } catch (error) {
+    if (error.code !== 11000) { // Duplicate key hatası değilse
+      console.error('Süper Admin oluşturma hatası:', error.message);
+    }
+  }
+};
+
+// Auth Middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Token bulunamadı' });
+  }
+  
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Geçersiz token' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// Süper Admin kontrolü
+const requireSuperAdmin = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user || user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Süper Admin yetkisi gerekli' });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({ error: 'Yetki kontrolü hatası' });
+  }
+};
+
+// Admin veya Süper Admin kontrolü
+const requireAdmin = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({ error: 'Yetki kontrolü hatası' });
+  }
+};
+
+// Discord Bot Integration
+const discordBot = require('./discord-bot');
+
+// Set dependencies for Discord bot
+discordBot.setDependencies(io, Log);
+
+// Start Discord Bot
+if (process.env.DISCORD_BOT_TOKEN) {
+  discordBot.login(process.env.DISCORD_BOT_TOKEN);
+} else {
+  console.log('⚠️ DISCORD_BOT_TOKEN bulunamadı, Discord bot başlatılmadı');
+}
+
 // API Routes
 
 // Health check
@@ -98,6 +236,418 @@ app.get('/api/health', (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
+});
+
+// ==================== AUTH ROUTES ====================
+
+// Register (sadece super_admin yeni kullanıcı oluşturabilir veya ilk kayıt)
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, email, password, role } = req.body;
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ 
+      $or: [{ username }, { email }] 
+    });
+    
+    if (existingUser) {
+      return res.status(400).json({ error: 'Kullanıcı adı veya email zaten kullanılıyor' });
+    }
+    
+    // Determine role (only super_admin can create admins)
+    let userRole = 'user';
+    const authHeader = req.headers['authorization'];
+    if (authHeader) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const requestingUser = await User.findById(decoded.userId);
+        if (requestingUser?.role === 'super_admin' && role) {
+          userRole = role;
+        }
+      } catch (e) {}
+    }
+    
+    const user = new User({
+      username,
+      email,
+      password,
+      role: userRole,
+    });
+    
+    await user.save();
+    
+    // Generate token
+    const token = jwt.sign(
+      { userId: user._id, username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    res.status(201).json({
+      message: 'Kayıt başarılı',
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
+      token,
+    });
+  } catch (error) {
+    console.error('Register error:', error);
+    res.status(500).json({ error: 'Kayıt hatası' });
+  }
+});
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    // Find user
+    const user = await User.findOne({ 
+      $or: [{ username }, { email: username }] 
+    });
+    
+    if (!user) {
+      return res.status(401).json({ error: 'Geçersiz kullanıcı adı veya şifre' });
+    }
+    
+    if (!user.isActive) {
+      return res.status(403).json({ error: 'Hesabınız devre dışı bırakılmış' });
+    }
+    
+    // Check password
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Geçersiz kullanıcı adı veya şifre' });
+    }
+    
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+    
+    // Generate token
+    const token = jwt.sign(
+      { userId: user._id, username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    res.json({
+      message: 'Giriş başarılı',
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        guilds: user.guilds,
+        avatar: user.avatar,
+      },
+      token,
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Giriş hatası' });
+  }
+});
+
+// Get current user
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: 'Kullanıcı bilgisi alınamadı' });
+  }
+});
+
+// ==================== SUPER ADMIN ROUTES ====================
+
+// Get all users (super_admin only)
+app.get('/api/admin/users', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const users = await User.find().select('-password').sort({ createdAt: -1 });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: 'Kullanıcılar alınamadı' });
+  }
+});
+
+// Get single user
+app.get('/api/admin/users/:userId', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: 'Kullanıcı alınamadı' });
+  }
+});
+
+// Create user (super_admin only)
+app.post('/api/admin/users', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const { username, email, password, role } = req.body;
+    
+    const existingUser = await User.findOne({ 
+      $or: [{ username }, { email }] 
+    });
+    
+    if (existingUser) {
+      return res.status(400).json({ error: 'Kullanıcı adı veya email zaten kullanılıyor' });
+    }
+    
+    const user = new User({
+      username,
+      email,
+      password,
+      role: role || 'user',
+    });
+    
+    await user.save();
+    
+    const userResponse = user.toObject();
+    delete userResponse.password;
+    
+    res.status(201).json(userResponse);
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({ error: 'Kullanıcı oluşturulamadı' });
+  }
+});
+
+// Update user (super_admin only)
+app.put('/api/admin/users/:userId', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const { username, email, password, role, isActive } = req.body;
+    
+    const updateData = { updatedAt: new Date() };
+    if (username) updateData.username = username;
+    if (email) updateData.email = email;
+    if (role) updateData.role = role;
+    if (typeof isActive === 'boolean') updateData.isActive = isActive;
+    
+    // Şifre değişikliği varsa hash'le
+    if (password) {
+      updateData.password = await bcrypt.hash(password, 12);
+    }
+    
+    const user = await User.findByIdAndUpdate(
+      req.params.userId,
+      updateData,
+      { new: true }
+    ).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+    
+    res.json(user);
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ error: 'Kullanıcı güncellenemedi' });
+  }
+});
+
+// Delete user (super_admin only)
+app.delete('/api/admin/users/:userId', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+    
+    // Kendini silemez
+    if (user._id.toString() === req.user.userId) {
+      return res.status(400).json({ error: 'Kendinizi silemezsiniz' });
+    }
+    
+    await User.findByIdAndDelete(req.params.userId);
+    res.json({ message: 'Kullanıcı silindi' });
+  } catch (error) {
+    res.status(500).json({ error: 'Kullanıcı silinemedi' });
+  }
+});
+
+// Add guild to user (super_admin only)
+app.post('/api/admin/users/:userId/guilds', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const { guildId, guildName, guildIcon, permissions } = req.body;
+    
+    const user = await User.findById(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+    
+    // Check if guild already exists for this user
+    const existingGuild = user.guilds.find(g => g.guildId === guildId);
+    if (existingGuild) {
+      return res.status(400).json({ error: 'Bu sunucu zaten eklenmiş' });
+    }
+    
+    // Create or update GuildSettings (sunucuyu sisteme kaydet)
+    let guildSettings = await GuildSettings.findOne({ guildId });
+    if (!guildSettings) {
+      guildSettings = new GuildSettings({
+        guildId,
+        guildName: guildName || `Sunucu ${guildId}`,
+        guildIcon: guildIcon || null,
+      });
+      await guildSettings.save();
+      console.log(`✅ Yeni sunucu kaydedildi: ${guildName || guildId}`);
+    }
+    
+    // Add guild to user
+    user.guilds.push({
+      guildId,
+      guildName: guildName || guildSettings.guildName,
+      guildIcon: guildIcon || guildSettings.guildIcon,
+      permissions: permissions || {
+        dashboard: true,
+        logs: false,
+        moderation: false,
+        welcome: false,
+        leveling: false,
+        tickets: false,
+        commands: false,
+        settings: false,
+      }
+    });
+    
+    await user.save();
+    
+    const userResponse = user.toObject();
+    delete userResponse.password;
+    
+    res.json(userResponse);
+  } catch (error) {
+    console.error('Add guild error:', error);
+    res.status(500).json({ error: 'Sunucu eklenemedi' });
+  }
+});
+
+// Update user guild permissions (super_admin only)
+app.put('/api/admin/users/:userId/guilds/:guildId', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const { permissions } = req.body;
+    
+    const user = await User.findById(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+    
+    const guildIndex = user.guilds.findIndex(g => g.guildId === req.params.guildId);
+    if (guildIndex === -1) {
+      return res.status(404).json({ error: 'Sunucu bulunamadı' });
+    }
+    
+    user.guilds[guildIndex].permissions = {
+      ...user.guilds[guildIndex].permissions,
+      ...permissions
+    };
+    
+    await user.save();
+    
+    const userResponse = user.toObject();
+    delete userResponse.password;
+    
+    res.json(userResponse);
+  } catch (error) {
+    console.error('Update permissions error:', error);
+    res.status(500).json({ error: 'İzinler güncellenemedi' });
+  }
+});
+
+// Remove guild from user (super_admin only)
+app.delete('/api/admin/users/:userId/guilds/:guildId', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+    
+    user.guilds = user.guilds.filter(g => g.guildId !== req.params.guildId);
+    await user.save();
+    
+    const userResponse = user.toObject();
+    delete userResponse.password;
+    
+    res.json(userResponse);
+  } catch (error) {
+    res.status(500).json({ error: 'Sunucu kaldırılamadı' });
+  }
+});
+
+// Get all guilds with stats (super_admin only)
+app.get('/api/admin/guilds', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const guilds = await GuildSettings.find().sort({ updatedAt: -1 });
+    
+    // Her guild için log sayısı ve kullanıcı sayısını al
+    const guildsWithStats = await Promise.all(
+      guilds.map(async (guild) => {
+        const logCount = await Log.countDocuments({ guildId: guild.guildId });
+        const userCount = await User.countDocuments({ 'guilds.guildId': guild.guildId });
+        
+        return {
+          ...guild.toObject(),
+          stats: {
+            logCount,
+            userCount
+          }
+        };
+      })
+    );
+    
+    res.json(guildsWithStats);
+  } catch (error) {
+    res.status(500).json({ error: 'Sunucular alınamadı' });
+  }
+});
+
+// Get dashboard stats (super_admin only)
+app.get('/api/admin/stats', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const activeUsers = await User.countDocuments({ isActive: true });
+    const totalGuilds = await GuildSettings.countDocuments();
+    const totalLogs = await Log.countDocuments();
+    
+    // Son 24 saatteki loglar
+    const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentLogs = await Log.countDocuments({ createdAt: { $gte: last24h } });
+    
+    // Son kayıt olan kullanıcılar
+    const recentUsers = await User.find()
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .limit(5);
+    
+    // Rol dağılımı
+    const roleStats = await User.aggregate([
+      { $group: { _id: '$role', count: { $sum: 1 } } }
+    ]);
+    
+    res.json({
+      totalUsers,
+      activeUsers,
+      totalGuilds,
+      totalLogs,
+      recentLogs,
+      recentUsers,
+      roleStats,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'İstatistikler alınamadı' });
+  }
 });
 
 // Get guild settings

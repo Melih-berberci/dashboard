@@ -1,7 +1,8 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { io, Socket } from "socket.io-client";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +35,7 @@ import {
   Home,
   Bot,
   ChevronLeft,
+  Search,
   Moon,
   Sun,
   LogOut,
@@ -61,11 +63,24 @@ import {
   Image as ImageIcon,
   AtSign,
   Link,
+  Ban,
+  UserX,
+  Edit,
+  Mic,
+  MicOff,
+  Circle,
+  ArrowRight,
+  Smile,
+  LinkIcon,
+  Filter,
+  Pause,
+  Play,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useTheme } from "@/components/providers/theme-provider";
 import { getGuildIconUrl } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAuthStore, hasGuildPermission } from "@/lib/auth-store";
 import {
   Dialog,
   DialogContent,
@@ -156,6 +171,47 @@ interface ModuleSettings {
   };
 }
 
+// Log Entry Interface
+interface LogEntry {
+  _id?: string;
+  guildId: string;
+  type: string;
+  userId?: string;
+  username?: string;
+  action: string;
+  details: Record<string, any>;
+  createdAt: string | Date;
+}
+
+// Log type categories
+const LOG_TYPE_CONFIG: Record<string, { icon: any; color: string; bgColor: string; label: string }> = {
+  message_create: { icon: MessageSquare, color: "text-blue-500", bgColor: "bg-blue-500/10", label: "Mesaj" },
+  message_delete: { icon: Trash2, color: "text-red-500", bgColor: "bg-red-500/10", label: "Mesaj Silindi" },
+  message_update: { icon: Edit, color: "text-yellow-500", bgColor: "bg-yellow-500/10", label: "Mesaj Düzenlendi" },
+  member_join: { icon: UserPlus, color: "text-green-500", bgColor: "bg-green-500/10", label: "Katıldı" },
+  member_leave: { icon: UserMinus, color: "text-orange-500", bgColor: "bg-orange-500/10", label: "Ayrıldı" },
+  member_ban: { icon: Ban, color: "text-red-600", bgColor: "bg-red-600/10", label: "Yasaklandı" },
+  member_unban: { icon: UserPlus, color: "text-green-600", bgColor: "bg-green-600/10", label: "Yasak Kaldırıldı" },
+  member_kick: { icon: UserX, color: "text-orange-600", bgColor: "bg-orange-600/10", label: "Atıldı" },
+  member_update: { icon: RefreshCw, color: "text-purple-500", bgColor: "bg-purple-500/10", label: "Güncellendi" },
+  voice_join: { icon: Mic, color: "text-green-500", bgColor: "bg-green-500/10", label: "Ses Katıldı" },
+  voice_leave: { icon: MicOff, color: "text-red-500", bgColor: "bg-red-500/10", label: "Ses Ayrıldı" },
+  voice_move: { icon: ArrowRight, color: "text-blue-500", bgColor: "bg-blue-500/10", label: "Ses Taşındı" },
+  channel_create: { icon: Hash, color: "text-green-500", bgColor: "bg-green-500/10", label: "Kanal Oluşturuldu" },
+  channel_delete: { icon: Trash2, color: "text-red-500", bgColor: "bg-red-500/10", label: "Kanal Silindi" },
+  channel_update: { icon: Edit, color: "text-yellow-500", bgColor: "bg-yellow-500/10", label: "Kanal Güncellendi" },
+  role_create: { icon: Shield, color: "text-green-500", bgColor: "bg-green-500/10", label: "Rol Oluşturuldu" },
+  role_delete: { icon: Trash2, color: "text-red-500", bgColor: "bg-red-500/10", label: "Rol Silindi" },
+  role_update: { icon: Edit, color: "text-yellow-500", bgColor: "bg-yellow-500/10", label: "Rol Güncellendi" },
+  reaction_add: { icon: Smile, color: "text-blue-500", bgColor: "bg-blue-500/10", label: "Tepki Eklendi" },
+  reaction_remove: { icon: Smile, color: "text-gray-500", bgColor: "bg-gray-500/10", label: "Tepki Kaldırıldı" },
+  invite_create: { icon: LinkIcon, color: "text-purple-500", bgColor: "bg-purple-500/10", label: "Davet Oluşturuldu" },
+  invite_delete: { icon: LinkIcon, color: "text-red-500", bgColor: "bg-red-500/10", label: "Davet Silindi" },
+  guild_update: { icon: Server, color: "text-yellow-500", bgColor: "bg-yellow-500/10", label: "Sunucu Güncellendi" },
+  bot_ready: { icon: Bot, color: "text-green-500", bgColor: "bg-green-500/10", label: "Bot Bağlandı" },
+  bot_error: { icon: Bot, color: "text-red-500", bgColor: "bg-red-500/10", label: "Bot Hatası" },
+};
+
 const defaultSettings: ModuleSettings = {
   welcome: {
     enabled: false,
@@ -190,6 +246,40 @@ export default function DashboardPage() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const guildId = params.guildId as string;
+  
+  // Auth store for permission checking
+  const { user: authUser, isAuthenticated: isAdminAuth, fetchUser } = useAuthStore();
+  
+  // Check if user has permission for a module
+  const canAccess = (module: string): boolean => {
+    // If user is authenticated via admin system
+    if (isAdminAuth && authUser) {
+      // Super admin can access everything
+      if (authUser.role === 'super_admin') return true;
+      
+      // Check specific guild permissions
+      const guild = authUser.guilds?.find(g => g.guildId === guildId);
+      if (!guild) return false;
+      
+      const permissionMap: Record<string, keyof typeof guild.permissions> = {
+        overview: 'dashboard',
+        logs: 'logs',
+        moderation: 'moderation',
+        welcome: 'welcome',
+        leveling: 'leveling',
+        tickets: 'tickets',
+        commands: 'commands',
+        settings: 'settings',
+        bots: 'dashboard', // bots uses dashboard permission
+      };
+      
+      const permission = permissionMap[module];
+      return permission ? guild.permissions[permission] : false;
+    }
+    
+    // If using Discord OAuth (NextAuth session), allow full access
+    return true;
+  };
 
   const [guildData, setGuildData] = useState<GuildData | null>(null);
   const [settings, setSettings] = useState<ModuleSettings>(defaultSettings);
@@ -213,6 +303,97 @@ export default function DashboardPage() {
     { name: "skip", description: "Şarkıyı atlar", category: "Müzik", enabled: false, cooldown: 2, permissions: [] },
     { name: "stop", description: "Müziği durdurur", category: "Müzik", enabled: false, cooldown: 0, permissions: [] },
   ]);
+
+  // Log states
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logFilter, setLogFilter] = useState<string>("all");
+  const [logsPaused, setLogsPaused] = useState(false);
+  const [searchLog, setSearchLog] = useState("");
+  const socketRef = useRef<Socket | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Socket.io connection for real-time logs
+  useEffect(() => {
+    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5000";
+    
+    socketRef.current = io(SOCKET_URL, {
+      transports: ["websocket", "polling"],
+    });
+
+    socketRef.current.on("connect", () => {
+      console.log("🔌 Socket bağlandı");
+      socketRef.current?.emit("join-guild", guildId);
+    });
+
+    socketRef.current.on("new-log", (data: { guildId: string; log: LogEntry }) => {
+      if (data.guildId === guildId && !logsPaused) {
+        setLogs((prev) => [data.log, ...prev].slice(0, 500)); // Keep last 500 logs
+      }
+    });
+
+    socketRef.current.on("disconnect", () => {
+      console.log("🔌 Socket bağlantısı koptu");
+    });
+
+    return () => {
+      socketRef.current?.emit("leave-guild", guildId);
+      socketRef.current?.disconnect();
+    };
+  }, [guildId, logsPaused]);
+
+  // Fetch existing logs
+  useEffect(() => {
+    async function fetchLogs() {
+      if (activeTab !== "logs") return;
+      
+      setLogsLoading(true);
+      try {
+        const response = await fetch(`http://localhost:5000/api/guilds/${guildId}/logs?limit=100`);
+        if (response.ok) {
+          const data = await response.json();
+          setLogs(data.logs || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch logs:", error);
+      } finally {
+        setLogsLoading(false);
+      }
+    }
+
+    fetchLogs();
+  }, [guildId, activeTab]);
+
+  // Filter logs
+  const filteredLogs = logs.filter((log) => {
+    const matchesFilter = logFilter === "all" || log.type === logFilter;
+    const matchesSearch = searchLog === "" || 
+      log.username?.toLowerCase().includes(searchLog.toLowerCase()) ||
+      log.action?.toLowerCase().includes(searchLog.toLowerCase()) ||
+      JSON.stringify(log.details).toLowerCase().includes(searchLog.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
+
+  // Format time ago
+  const formatTimeAgo = (date: string | Date) => {
+    const now = new Date();
+    const logDate = new Date(date);
+    const diffMs = now.getTime() - logDate.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+
+    if (diffSec < 60) return `${diffSec} saniye önce`;
+    if (diffMin < 60) return `${diffMin} dakika önce`;
+    if (diffHour < 24) return `${diffHour} saat önce`;
+    return `${diffDay} gün önce`;
+  };
+
+  // Get log type config
+  const getLogConfig = (type: string) => {
+    return LOG_TYPE_CONFIG[type] || { icon: Activity, color: "text-gray-500", bgColor: "bg-gray-500/10", label: type };
+  };
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -388,78 +569,96 @@ export default function DashboardPage() {
 
         <ScrollArea className="flex-1 p-2">
           <nav className="space-y-1">
-            <Button
-              variant={activeTab === "overview" ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => setActiveTab("overview")}
-            >
-              <Home className="mr-2 h-4 w-4" />
-              Genel Bakış
-            </Button>
-            <Button
-              variant={activeTab === "moderation" ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => setActiveTab("moderation")}
-            >
-              <Shield className="mr-2 h-4 w-4" />
-              Moderasyon
-            </Button>
-            <Button
-              variant={activeTab === "welcome" ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => setActiveTab("welcome")}
-            >
-              <UserPlus className="mr-2 h-4 w-4" />
-              Karşılama
-            </Button>
-            <Button
-              variant={activeTab === "commands" ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => setActiveTab("commands")}
-            >
-              <Terminal className="mr-2 h-4 w-4" />
-              Komutlar
-            </Button>
-            <Button
-              variant={activeTab === "bots" ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => setActiveTab("bots")}
-            >
-              <Bot className="mr-2 h-4 w-4" />
-              Botlar
-            </Button>
-            <Button
-              variant={activeTab === "leveling" ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => setActiveTab("leveling")}
-            >
-              <Star className="mr-2 h-4 w-4" />
-              Seviye Sistemi
-            </Button>
-            <Button
-              variant={activeTab === "tickets" ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => setActiveTab("tickets")}
-            >
-              <Ticket className="mr-2 h-4 w-4" />
-              Bilet Sistemi
-            </Button>
-            <Button
-              variant={activeTab === "logs" ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => setActiveTab("logs")}
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              Loglar
-            </Button>
-            <Button
-              variant={activeTab === "settings" ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => setActiveTab("settings")}
-            >
-              <Settings className="mr-2 h-4 w-4" />
-              Bot Ayarları
-            </Button>
+            {canAccess("overview") && (
+              <Button
+                variant={activeTab === "overview" ? "secondary" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setActiveTab("overview")}
+              >
+                <Home className="mr-2 h-4 w-4" />
+                Genel Bakış
+              </Button>
+            )}
+            {canAccess("moderation") && (
+              <Button
+                variant={activeTab === "moderation" ? "secondary" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setActiveTab("moderation")}
+              >
+                <Shield className="mr-2 h-4 w-4" />
+                Moderasyon
+              </Button>
+            )}
+            {canAccess("welcome") && (
+              <Button
+                variant={activeTab === "welcome" ? "secondary" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setActiveTab("welcome")}
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                Karşılama
+              </Button>
+            )}
+            {canAccess("commands") && (
+              <Button
+                variant={activeTab === "commands" ? "secondary" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setActiveTab("commands")}
+              >
+                <Terminal className="mr-2 h-4 w-4" />
+                Komutlar
+              </Button>
+            )}
+            {canAccess("bots") && (
+              <Button
+                variant={activeTab === "bots" ? "secondary" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setActiveTab("bots")}
+              >
+                <Bot className="mr-2 h-4 w-4" />
+                Botlar
+              </Button>
+            )}
+            {canAccess("leveling") && (
+              <Button
+                variant={activeTab === "leveling" ? "secondary" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setActiveTab("leveling")}
+              >
+                <Star className="mr-2 h-4 w-4" />
+                Seviye Sistemi
+              </Button>
+            )}
+            {canAccess("tickets") && (
+              <Button
+                variant={activeTab === "tickets" ? "secondary" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setActiveTab("tickets")}
+              >
+                <Ticket className="mr-2 h-4 w-4" />
+                Bilet Sistemi
+              </Button>
+            )}
+            {canAccess("logs") && (
+              <Button
+                variant={activeTab === "logs" ? "secondary" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setActiveTab("logs")}
+              >
+                <FileText className="mr-2 h-4 w-4" />
+                Loglar
+              </Button>
+            )}
+            {canAccess("settings") && (
+              <Button
+                variant={activeTab === "settings" ? "secondary" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setActiveTab("settings")}
+              >
+                <Settings className="mr-2 h-4 w-4" />
+                Bot Ayarları
+              </Button>
+            )}
           </nav>
         </ScrollArea>
       </aside>
@@ -1233,17 +1432,17 @@ export default function DashboardPage() {
           {/* Logs Tab */}
           {activeTab === "logs" && (
             <div className="space-y-6">
-              {/* Server Overview */}
+              {/* Log Stats */}
               <div className="grid gap-4 md:grid-cols-4">
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
                       <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                        <Hash className="h-5 w-5 text-blue-500" />
+                        <MessageSquare className="h-5 w-5 text-blue-500" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">{guildData?.channels.filter(c => c.type === 0).length || 0}</p>
-                        <p className="text-sm text-muted-foreground">Metin Kanalı</p>
+                        <p className="text-2xl font-bold">{logs.filter(l => l.type.includes('message')).length}</p>
+                        <p className="text-sm text-muted-foreground">Mesaj Logu</p>
                       </div>
                     </div>
                   </CardContent>
@@ -1252,11 +1451,11 @@ export default function DashboardPage() {
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
                       <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-                        <Volume2 className="h-5 w-5 text-green-500" />
+                        <Users className="h-5 w-5 text-green-500" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">{guildData?.channels.filter(c => c.type === 2).length || 0}</p>
-                        <p className="text-sm text-muted-foreground">Ses Kanalı</p>
+                        <p className="text-2xl font-bold">{logs.filter(l => l.type.includes('member')).length}</p>
+                        <p className="text-sm text-muted-foreground">Üye Logu</p>
                       </div>
                     </div>
                   </CardContent>
@@ -1265,11 +1464,11 @@ export default function DashboardPage() {
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
                       <div className="h-10 w-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                        <AtSign className="h-5 w-5 text-purple-500" />
+                        <Mic className="h-5 w-5 text-purple-500" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">{guildData?.roles.length || 0}</p>
-                        <p className="text-sm text-muted-foreground">Rol</p>
+                        <p className="text-2xl font-bold">{logs.filter(l => l.type.includes('voice')).length}</p>
+                        <p className="text-sm text-muted-foreground">Ses Logu</p>
                       </div>
                     </div>
                   </CardContent>
@@ -1278,197 +1477,211 @@ export default function DashboardPage() {
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
                       <div className="h-10 w-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
-                        <Bot className="h-5 w-5 text-yellow-500" />
+                        <Activity className="h-5 w-5 text-yellow-500" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">{guildData?.bots?.length || 0}</p>
-                        <p className="text-sm text-muted-foreground">Bot</p>
+                        <p className="text-2xl font-bold">{logs.length}</p>
+                        <p className="text-sm text-muted-foreground">Toplam Log</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Channels List */}
+              {/* Real-time Activity Logs */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Kanallar</CardTitle>
-                  <CardDescription>Sunucudaki tüm kanallar</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[300px]">
-                    <div className="space-y-2">
-                      {guildData?.channels.map((channel) => (
-                        <div
-                          key={channel.id}
-                          className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                        >
-                          <div className="flex items-center gap-3">
-                            {channel.type === 0 && <Hash className="h-4 w-4 text-muted-foreground" />}
-                            {channel.type === 2 && <Volume2 className="h-4 w-4 text-muted-foreground" />}
-                            {channel.type === 4 && <Server className="h-4 w-4 text-muted-foreground" />}
-                            {channel.type === 5 && <Bell className="h-4 w-4 text-muted-foreground" />}
-                            <span className="font-medium">{channel.name}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs">
-                              {channel.type === 0 && "Metin"}
-                              {channel.type === 2 && "Ses"}
-                              {channel.type === 4 && "Kategori"}
-                              {channel.type === 5 && "Duyuru"}
-                            </Badge>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => {
-                                navigator.clipboard.writeText(channel.id);
-                                toast.success("Kanal ID kopyalandı");
-                              }}
-                            >
-                              <Copy className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        Gerçek Zamanlı Loglar
+                        {!logsPaused && (
+                          <span className="relative flex h-3 w-3">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                          </span>
+                        )}
+                      </CardTitle>
+                      <CardDescription>
+                        Sunucudaki tüm aktiviteler anlık olarak burada görünür
+                      </CardDescription>
                     </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-
-              {/* Roles List */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Roller</CardTitle>
-                  <CardDescription>Sunucudaki tüm roller</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[250px]">
-                    <div className="space-y-2">
-                      {guildData?.roles
-                        .sort((a, b) => (b.position || 0) - (a.position || 0))
-                        .map((role) => (
-                          <div
-                            key={role.id}
-                            className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="h-4 w-4 rounded-full"
-                                style={{
-                                  backgroundColor: role.color ? `#${role.color.toString(16).padStart(6, '0')}` : '#99aab5'
-                                }}
-                              />
-                              <span className="font-medium">{role.name}</span>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => {
-                                navigator.clipboard.writeText(role.id);
-                                toast.success("Rol ID kopyalandı");
-                              }}
-                            >
-                              <Copy className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ))}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant={logsPaused ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setLogsPaused(!logsPaused)}
+                      >
+                        {logsPaused ? (
+                          <>
+                            <Play className="h-4 w-4 mr-1" />
+                            Devam Et
+                          </>
+                        ) : (
+                          <>
+                            <Pause className="h-4 w-4 mr-1" />
+                            Duraklat
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setLogs([])}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Temizle
+                      </Button>
                     </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-
-              {/* Members List */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Son Üyeler</CardTitle>
-                  <CardDescription>Sunucudaki üyeler (son 50)</CardDescription>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  {guildData?.members && guildData.members.length > 0 ? (
-                    <ScrollArea className="h-[300px]">
+                  {/* Filters */}
+                  <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Log ara... (kullanıcı adı, işlem, detay)"
+                        value={searchLog}
+                        onChange={(e) => setSearchLog(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                    <Select value={logFilter} onValueChange={setLogFilter}>
+                      <SelectTrigger className="w-full sm:w-[200px]">
+                        <Filter className="h-4 w-4 mr-2" />
+                        <SelectValue placeholder="Filtrele" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tüm Loglar</SelectItem>
+                        <SelectItem value="message_create">Mesaj Gönderildi</SelectItem>
+                        <SelectItem value="message_delete">Mesaj Silindi</SelectItem>
+                        <SelectItem value="message_update">Mesaj Düzenlendi</SelectItem>
+                        <SelectItem value="member_join">Üye Katıldı</SelectItem>
+                        <SelectItem value="member_leave">Üye Ayrıldı</SelectItem>
+                        <SelectItem value="member_ban">Üye Yasaklandı</SelectItem>
+                        <SelectItem value="member_unban">Yasak Kaldırıldı</SelectItem>
+                        <SelectItem value="member_kick">Üye Atıldı</SelectItem>
+                        <SelectItem value="member_update">Üye Güncellendi</SelectItem>
+                        <SelectItem value="voice_join">Ses Katıldı</SelectItem>
+                        <SelectItem value="voice_leave">Ses Ayrıldı</SelectItem>
+                        <SelectItem value="voice_move">Ses Taşındı</SelectItem>
+                        <SelectItem value="channel_create">Kanal Oluşturuldu</SelectItem>
+                        <SelectItem value="channel_delete">Kanal Silindi</SelectItem>
+                        <SelectItem value="role_create">Rol Oluşturuldu</SelectItem>
+                        <SelectItem value="role_delete">Rol Silindi</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Logs List */}
+                  {logsLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : filteredLogs.length === 0 ? (
+                    <div className="text-center py-12">
+                      <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                      <h3 className="font-semibold text-lg">Henüz log yok</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {logs.length === 0 
+                          ? "Sunucuda bir olay gerçekleştiğinde burada görünecek"
+                          : "Filtrelere uygun log bulunamadı"}
+                      </p>
+                    </div>
+                  ) : (
+                    <ScrollArea className="h-[500px]">
                       <div className="space-y-2">
-                        {guildData.members.map((member) => (
-                          <div
-                            key={member.id}
-                            className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                          >
-                            <div className="flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
-                                {member.avatar ? (
-                                  <AvatarImage
-                                    src={`https://cdn.discordapp.com/avatars/${member.id}/${member.avatar}.png`}
-                                  />
-                                ) : null}
-                                <AvatarFallback>
-                                  {member.username?.charAt(0).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="font-medium text-sm">
-                                  {member.nickname || member.username}
-                                  {member.isBot && <Badge variant="secondary" className="ml-2 text-xs">BOT</Badge>}
-                                </p>
-                                <p className="text-xs text-muted-foreground">@{member.username}</p>
-                              </div>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => {
-                                navigator.clipboard.writeText(member.id);
-                                toast.success("Kullanıcı ID kopyalandı");
-                              }}
+                        {filteredLogs.map((log, index) => {
+                          const config = getLogConfig(log.type);
+                          const LogIcon = config.icon;
+                          
+                          return (
+                            <div
+                              key={log._id || index}
+                              className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted/80 transition-colors animate-in slide-in-from-top-2 duration-300"
                             >
-                              <Copy className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ))}
+                              <div className={`h-10 w-10 rounded-lg ${config.bgColor} flex items-center justify-center flex-shrink-0`}>
+                                <LogIcon className={`h-5 w-5 ${config.color}`} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-sm">
+                                    {log.username || "Sistem"}
+                                  </span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {config.label}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground mt-0.5">
+                                  {log.action}
+                                </p>
+                                {/* Log Details */}
+                                {log.details && Object.keys(log.details).length > 0 && (
+                                  <div className="mt-2 text-xs text-muted-foreground bg-background/50 rounded p-2 space-y-1">
+                                    {log.details.content && (
+                                      <p><span className="font-medium">İçerik:</span> {log.details.content.substring(0, 100)}{log.details.content.length > 100 ? '...' : ''}</p>
+                                    )}
+                                    {log.details.channelName && (
+                                      <p><span className="font-medium">Kanal:</span> #{log.details.channelName}</p>
+                                    )}
+                                    {log.details.reason && (
+                                      <p><span className="font-medium">Sebep:</span> {log.details.reason}</p>
+                                    )}
+                                    {log.details.bannedBy && (
+                                      <p><span className="font-medium">Yasaklayan:</span> {log.details.bannedBy}</p>
+                                    )}
+                                    {log.details.kickedBy && (
+                                      <p><span className="font-medium">Atan:</span> {log.details.kickedBy}</p>
+                                    )}
+                                    {log.details.oldContent && log.details.newContent && (
+                                      <>
+                                        <p><span className="font-medium">Eski:</span> {log.details.oldContent.substring(0, 50)}...</p>
+                                        <p><span className="font-medium">Yeni:</span> {log.details.newContent.substring(0, 50)}...</p>
+                                      </>
+                                    )}
+                                    {log.details.addedRoles && (
+                                      <p><span className="font-medium">Eklenen Roller:</span> {log.details.addedRoles.map((r: any) => r.name).join(', ')}</p>
+                                    )}
+                                    {log.details.removedRoles && (
+                                      <p><span className="font-medium">Kaldırılan Roller:</span> {log.details.removedRoles.map((r: any) => r.name).join(', ')}</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                {formatTimeAgo(log.createdAt)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        <div ref={logsEndRef} />
                       </div>
                     </ScrollArea>
-                  ) : (
-                    <div className="text-center py-8">
-                      <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-sm text-muted-foreground">Üye bilgisi yüklenemedi</p>
-                    </div>
                   )}
                 </CardContent>
               </Card>
 
-              {/* Activity Logs */}
+              {/* Quick Log Type Legend */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Aktivite Logları</CardTitle>
-                  <CardDescription>Son olaylar ve aktiviteler</CardDescription>
+                  <CardTitle className="text-base">Log Türleri</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {[
-                      { type: "join", user: "Kullanıcı#1234", time: "2 dakika önce", icon: UserPlus, color: "text-green-500" },
-                      { type: "leave", user: "Kullanıcı#5678", time: "15 dakika önce", icon: UserMinus, color: "text-red-500" },
-                      { type: "ban", user: "Kullanıcı#9012", time: "1 saat önce", icon: Gavel, color: "text-orange-500" },
-                      { type: "message", user: "Kullanıcı#3456", time: "2 saat önce", icon: MessageSquare, color: "text-blue-500" },
-                    ].map((log, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                        <div className="flex items-center gap-3">
-                          <div className={`h-8 w-8 rounded-full bg-background flex items-center justify-center`}>
-                            <log.icon className={`h-4 w-4 ${log.color}`} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium">{log.user}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {log.type === "join" && "Sunucuya katıldı"}
-                              {log.type === "leave" && "Sunucudan ayrıldı"}
-                              {log.type === "ban" && "Yasaklandı"}
-                              {log.type === "message" && "Mesaj silindi"}
-                            </p>
-                          </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                    {Object.entries(LOG_TYPE_CONFIG).slice(0, 12).map(([type, config]) => {
+                      const LogIcon = config.icon;
+                      return (
+                        <div
+                          key={type}
+                          className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
+                          onClick={() => setLogFilter(type)}
+                        >
+                          <LogIcon className={`h-4 w-4 ${config.color}`} />
+                          <span className="text-xs truncate">{config.label}</span>
                         </div>
-                        <span className="text-xs text-muted-foreground">{log.time}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>

@@ -12,7 +12,13 @@ Modern ve güçlü Discord bot yönetim paneli. Next.js, Express.js ve MongoDB i
   - Seviye Sistemi (XP kazanma, Seviye atlamalart)
   - Bilet Sistemi (Destek talepleri)
 - **Gerçek Zamanlı Senkronizasyon**: WebSocket ile anlık güncellemeler
-- **Detaylı Loglama**: Tüm sunucu olaylarının kaydı
+- **Gerçek Zamanlı Loglama**: Discord sunucusundaki tüm olayların anlık takibi
+  - Mesaj gönderme/silme/düzenleme
+  - Üye katılma/ayrılma
+  - Ban/Kick/Unban işlemleri
+  - Ses kanalı aktiviteleri
+  - Rol ve kanal değişiklikleri
+  - Ve daha fazlası...
 - **Dark/Light Mode**: Kullanıcı tercihine göre tema
 - **Responsive Tasarım**: Mobil uyumlu arayüz
 
@@ -44,6 +50,11 @@ cp .env.example .env
    - Redirects kısmına `http://localhost:3000/api/auth/callback/discord` ekleyin
 4. **Bot** sekmesinde:
    - Bot token'ı kopyalayın
+   - **Privileged Gateway Intents** altında şunları aktif edin:
+     - PRESENCE INTENT
+     - SERVER MEMBERS INTENT
+     - MESSAGE CONTENT INTENT
+5. Botu sunucunuza davet edin (gerekli izinlerle)
 
 ### 4. Uygulamayı Başlatın
 
@@ -89,7 +100,8 @@ dashboard/
 │   ├── auth.ts               # Auth helpers
 │   └── utils.ts              # Genel utilities
 ├── server/                   # Express backend
-│   └── index.js              # API server
+│   ├── index.js              # API server
+│   └── discord-bot.js        # Discord bot (gerçek zamanlı loglama)
 ├── .env.example              # Ortam değişkenleri örneği
 ├── next.config.js            # Next.js config
 ├── package.json              # Dependencies

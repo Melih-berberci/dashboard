@@ -106,6 +106,15 @@ export default function HomePage() {
         <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl" />
         <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-secondary/5 rounded-full blur-3xl" />
         <div className="absolute inset-0 scanlines opacity-30" />
+        
+        {/* Blurred Logo Background */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <img 
+            src="/logo.png" 
+            alt="" 
+            className="w-[600px] h-[600px] object-contain opacity-[0.03] filter blur-sm"
+          />
+        </div>
       </div>
 
       {/* Header */}
