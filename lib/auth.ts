@@ -1,45 +1,10 @@
 import { NextAuthOptions } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
 import CredentialsProvider from "next-auth/providers/credentials";
-import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
+import { connectDB, getUserModel } from "@/lib/db";
 
 const DISCORD_SCOPES = ["identify", "guilds", "email"].join(" ");
-
-// MongoDB User Schema for credentials auth (server-side only)
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-  avatar: { type: String, default: null },
-  role: { type: String, default: "user" },
-});
-
-// Get User model (server-side only)
-function getUserModel() {
-  if (typeof window !== "undefined") {
-    throw new Error("Cannot access User model on client side");
-  }
-  return mongoose.models?.User || mongoose.model("User", userSchema);
-}
-
-// Simple password hashing (in production, use bcrypt)
-function hashPassword(password: string): string {
-  const crypto = require("crypto");
-  return crypto.createHash("sha256").update(password).digest("hex");
-}
-
-// Connect to MongoDB
-async function connectDB() {
-  if (mongoose.connection.readyState >= 1) return;
-  
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error("MONGODB_URI not defined");
-  }
-  
-  await mongoose.connect(uri);
-}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -78,9 +43,9 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Kullanıcı bulunamadı");
           }
 
-          const hashedPassword = hashPassword(credentials.password);
+          const isMatch = await bcrypt.compare(credentials.password, user.password);
           
-          if (user.password !== hashedPassword) {
+          if (!isMatch) {
             throw new Error("Şifre hatalı");
           }
 

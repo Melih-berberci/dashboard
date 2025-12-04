@@ -1,48 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import mongoose from "mongoose";
-import crypto from "crypto";
-
-// MongoDB User Schema
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-  avatar: { type: String, default: null },
-  role: { type: String, default: "user" },
-});
-
-// Simple password hashing (in production, use bcrypt)
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password).digest("hex");
-}
-
-// Get or create User model
-const User = mongoose.models.User || mongoose.model("User", userSchema);
-
-// Connect to MongoDB
-async function connectDB() {
-  try {
-    if (mongoose.connection.readyState >= 1) {
-      console.log("MongoDB already connected");
-      return;
-    }
-    
-    const uri = process.env.MONGODB_URI;
-    if (!uri) {
-      throw new Error("MONGODB_URI environment variable is not defined");
-    }
-    
-    console.log("Connecting to MongoDB...");
-    await mongoose.connect(uri, {
-      dbName: "cyberpanel", // Specify database name
-    });
-    console.log("MongoDB connected successfully");
-  } catch (error) {
-    console.error("MongoDB connection error:", error);
-    throw error;
-  }
-}
+import bcrypt from "bcryptjs";
+import { connectDB, getUserModel } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   try {
@@ -104,6 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     await connectDB();
+    const User = getUserModel();
 
     // Check if email already exists
     const existingEmail = await User.findOne({ email: email.toLowerCase() });
@@ -124,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Hash password and create user
-    const hashedPassword = hashPassword(password);
+    const hashedPassword = await bcrypt.hash(password, 12);
     
     const user = new User({
       username: username.toLowerCase(),

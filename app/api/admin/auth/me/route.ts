@@ -1,48 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
+import { connectDB, getUserModel } from "@/lib/db";
 
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key-change-in-production";
-const MONGODB_URI = process.env.MONGODB_URI || "";
-
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  role: { type: String, enum: ["super_admin", "admin", "user"], default: "user" },
-  discordId: { type: String, unique: true, sparse: true },
-  discordUsername: { type: String },
-  avatar: { type: String },
-  guilds: [{
-    guildId: { type: String, required: true },
-    guildName: { type: String },
-    guildIcon: { type: String },
-    permissions: {
-      dashboard: { type: Boolean, default: true },
-      logs: { type: Boolean, default: false },
-      moderation: { type: Boolean, default: false },
-      welcome: { type: Boolean, default: false },
-      leveling: { type: Boolean, default: false },
-      tickets: { type: Boolean, default: false },
-      commands: { type: Boolean, default: false },
-      settings: { type: Boolean, default: false },
-    },
-  }],
-  isActive: { type: Boolean, default: true },
-  lastLogin: { type: Date },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
-});
-
-function getUserModel() {
-  return mongoose.models.User || mongoose.model("User", userSchema);
-}
-
-async function connectDB() {
-  if (mongoose.connection.readyState >= 1) return;
-  if (!MONGODB_URI) throw new Error("MONGODB_URI not defined");
-  await mongoose.connect(MONGODB_URI);
-}
 
 export async function GET(request: NextRequest) {
   try {
