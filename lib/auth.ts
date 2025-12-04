@@ -43,15 +43,18 @@ async function connectDB() {
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    DiscordProvider({
-      clientId: process.env.DISCORD_CLIENT_ID!,
-      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope: DISCORD_SCOPES,
+    // Only add Discord provider if credentials are set
+    ...(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET ? [
+      DiscordProvider({
+        clientId: process.env.DISCORD_CLIENT_ID,
+        clientSecret: process.env.DISCORD_CLIENT_SECRET,
+        authorization: {
+          params: {
+            scope: DISCORD_SCOPES,
+          },
         },
-      },
-    }),
+      }),
+    ] : []),
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -140,7 +143,7 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || "fallback-secret-change-in-production",
 };
 
 // Discord API functions
