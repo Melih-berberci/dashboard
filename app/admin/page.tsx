@@ -67,7 +67,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "dashboard-nine-rho-24.vercel.app";
+const API_URL = "";
 
 interface AdminUser extends User {
   _id: string;
