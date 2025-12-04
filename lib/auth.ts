@@ -63,6 +63,10 @@ export const authOptions: NextAuthOptions = {
         try {
           await connectDB();
           
+          if (!User) {
+            throw new Error("Database model not available");
+          }
+          
           const user = await User.findOne({ 
             email: credentials.email.toLowerCase() 
           });
