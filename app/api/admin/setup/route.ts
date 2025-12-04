@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { connectDB, getUserModel } from "@/lib/db";
@@ -7,14 +9,15 @@ export async function GET() {
   try {
     await connectDB();
     const User = getUserModel();
-    
+
     const superAdmin = await User.findOne({ role: "super_admin" });
-    
+
     return NextResponse.json({
       exists: !!superAdmin,
       message: superAdmin ? "Süper admin mevcut" : "Süper admin bulunamadı",
     });
   } catch (error: any) {
+    console.error("Setup GET error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -24,7 +27,7 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const User = getUserModel();
-    
+
     // Check if super admin already exists
     const existingSuperAdmin = await User.findOne({ role: "super_admin" });
     if (existingSuperAdmin) {
@@ -33,8 +36,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
-    const { username, email, password } = await request.json();
+
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      // Empty body is OK, we'll use defaults
+    }
+
+    const { username, email, password } = body as any;
     
     // Use environment variables as defaults
     const finalUsername = username || process.env.SUPER_ADMIN_USERNAME || "admin";
