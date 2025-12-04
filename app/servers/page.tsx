@@ -77,6 +77,26 @@ export default function ServersPage() {
 
   useEffect(() => {
     async function fetchGuilds() {
+      // Fetch user's saved guilds from database
+      try {
+        const savedGuildsRes = await fetch("/api/user/guilds");
+        if (savedGuildsRes.ok) {
+          const data = await savedGuildsRes.json();
+          const savedGuilds = (data.guilds || []).map((g: any) => ({
+            id: g.guildId,
+            name: g.guildName || `Sunucu ${g.guildId}`,
+            icon: g.guildIcon,
+            owner: false,
+            permissions: "0",
+            features: [],
+            botPresent: false,
+          }));
+          setManualServers(savedGuilds);
+        }
+      } catch (error) {
+        console.error("Failed to fetch saved guilds:", error);
+      }
+
       // If using Discord OAuth, fetch user's guilds
       if (session?.accessToken) {
         try {
@@ -114,6 +134,9 @@ export default function ServersPage() {
     guild.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // State for server name input
+  const [serverNameInput, setServerNameInput] = useState("");
+
   // Function to add server by ID
   const handleAddServerById = async () => {
     if (!serverIdInput.trim()) {
@@ -129,28 +152,38 @@ export default function ServersPage() {
 
     setAddingServer(true);
     try {
-      const response = await fetch(`/api/guilds/${serverIdInput.trim()}`);
+      // Save to database directly without requiring bot
+      const response = await fetch("/api/user/guilds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guildId: serverIdInput.trim(),
+          guildName: serverNameInput.trim() || `Sunucu ${serverIdInput.trim()}`,
+        }),
+      });
+
       const data = await response.json();
 
       if (!response.ok) {
-        toast.error(data.error || "Sunucu bulunamadı");
+        toast.error(data.error || "Sunucu eklenemedi");
         return;
       }
 
       const newGuild: Guild = {
-        id: data.id,
-        name: data.name,
-        icon: data.icon,
+        id: serverIdInput.trim(),
+        name: serverNameInput.trim() || `Sunucu ${serverIdInput.trim()}`,
+        icon: null,
         owner: false,
         permissions: "0",
-        features: data.features || [],
-        botPresent: true,
+        features: [],
+        botPresent: false,
       };
 
       setManualServers(prev => [...prev, newGuild]);
       setServerIdInput("");
+      setServerNameInput("");
       setDialogOpen(false);
-      toast.success(`${data.name} sunucusu eklendi!`);
+      toast.success(`${newGuild.name} sunucusu eklendi!`);
     } catch (error) {
       toast.error("Sunucu eklenirken bir hata oluştu");
     } finally {
@@ -240,7 +273,7 @@ export default function ServersPage() {
                 />
               </div>
               
-              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setServerIdInput(""); setServerNameInput(""); } }}>
                 <DialogTrigger asChild>
                   <Button className="gap-2">
                     <Plus className="h-4 w-4" />
@@ -249,9 +282,9 @@ export default function ServersPage() {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Sunucu ID ile Ekle</DialogTitle>
+                    <DialogTitle>Sunucu Ekle</DialogTitle>
                     <DialogDescription>
-                      Sunucu ID'sini girerek sunucuyu dashboard'a ekleyebilirsiniz. Bot'un sunucuda olması gerekir.
+                      Sunucu ID'sini ve adını girerek sunucuyu dashboard'a ekleyebilirsiniz.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
@@ -261,11 +294,19 @@ export default function ServersPage() {
                         placeholder="123456789012345678"
                         value={serverIdInput}
                         onChange={(e) => setServerIdInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleAddServerById()}
                       />
                       <p className="text-xs text-muted-foreground">
                         Discord'da sunucuya sağ tıklayıp "Sunucu ID'sini Kopyala" seçeneğini kullanabilirsiniz.
                       </p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Sunucu Adı</label>
+                      <Input
+                        placeholder="Benim Sunucum"
+                        value={serverNameInput}
+                        onChange={(e) => setServerNameInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleAddServerById()}
+                      />
                     </div>
                   </div>
                   <DialogFooter>
