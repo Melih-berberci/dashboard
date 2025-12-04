@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { connectDB, getUserModel } from "@/lib/db";
@@ -14,12 +16,12 @@ export async function GET(request: NextRequest) {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
-    
+
     await connectDB();
     const User = getUserModel();
-    
+
     const user = await User.findById(decoded.userId).select("-password");
-    
+
     if (!user) {
       return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 });
     }

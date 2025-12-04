@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -19,7 +21,6 @@ export async function POST(request: NextRequest) {
     await connectDB();
     const User = getUserModel();
 
-    // Find user by username or email
     const user = await User.findOne({
       $or: [
         { username: username.toLowerCase() },
@@ -41,17 +42,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return NextResponse.json({ error: "Şifre hatalı" }, { status: 401 });
     }
 
-    // Update last login
     user.lastLogin = new Date();
     await user.save();
 
-    // Generate JWT
     const token = jwt.sign(
       { userId: user._id, username: user.username, role: user.role },
       JWT_SECRET,
