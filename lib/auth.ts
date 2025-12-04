@@ -15,10 +15,13 @@ const userSchema = new mongoose.Schema({
   role: { type: String, default: "user" },
 });
 
-// Only create mongoose model on server side
-const User = typeof window === "undefined" 
-  ? (mongoose.models?.User || mongoose.model("User", userSchema))
-  : null;
+// Get User model (server-side only)
+function getUserModel() {
+  if (typeof window !== "undefined") {
+    throw new Error("Cannot access User model on client side");
+  }
+  return mongoose.models?.User || mongoose.model("User", userSchema);
+}
 
 // Simple password hashing (in production, use bcrypt)
 function hashPassword(password: string): string {
@@ -63,11 +66,8 @@ export const authOptions: NextAuthOptions = {
         try {
           await connectDB();
           
-          if (!User) {
-            throw new Error("Database model not available");
-          }
-          
-          const user = await User!.findOne({ 
+          const User = getUserModel();
+          const user = await User.findOne({ 
             email: credentials.email.toLowerCase() 
           });
 
