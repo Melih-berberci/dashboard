@@ -301,13 +301,10 @@ export default function ServersPage() {
                 variant="outline"
                 className="gap-2"
                 onClick={() => {
-                  const botClientId = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
-                  if (!botClientId) {
-                    toast.error("Bot yapılandırılmamış");
-                    return;
-                  }
-                  // Minimum required permissions for logging
-                  const permissions = "1099511627775"; // Admin permissions
+                  // Bot Client ID
+                  const botClientId = "1418210735636480010";
+                  // Safe permissions: View Channels (1024) + Read Message History (65536) + View Audit Log (128) = 66688
+                  const permissions = "66688";
                   const scopes = "bot%20applications.commands";
                   const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${botClientId}&permissions=${permissions}&scope=${scopes}`;
                   window.open(inviteUrl, "_blank");
