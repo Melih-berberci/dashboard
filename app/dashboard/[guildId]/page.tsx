@@ -313,6 +313,50 @@ export default function DashboardPage() {
   const socketRef = useRef<Socket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
+  // 🔒 Guild Isolation State - Bu sunucu için bot aktif/pasif
+  const [botEnabled, setBotEnabled] = useState(true);
+  const [togglingBot, setTogglingBot] = useState(false);
+
+  // 🔒 Fetch guild enabled status
+  useEffect(() => {
+    async function fetchBotStatus() {
+      try {
+        const response = await fetch(`/api/guilds/${guildId}/toggle`);
+        if (response.ok) {
+          const data = await response.json();
+          setBotEnabled(data.enabled);
+        }
+      } catch (error) {
+        console.error("Failed to fetch bot status:", error);
+      }
+    }
+    if (guildId) fetchBotStatus();
+  }, [guildId]);
+
+  // 🔒 Toggle bot for this guild only
+  const handleToggleBot = async () => {
+    setTogglingBot(true);
+    try {
+      const response = await fetch(`/api/guilds/${guildId}/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !botEnabled }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBotEnabled(data.enabled);
+        toast.success(data.message);
+      } else {
+        toast.error("Bot durumu değiştirilemedi");
+      }
+    } catch (error) {
+      toast.error("Bir hata oluştu");
+    } finally {
+      setTogglingBot(false);
+    }
+  };
+
   // Socket.io connection for real-time logs
   useEffect(() => {
     const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "dashboard-nine-rho-24.vercel.app";
@@ -751,13 +795,29 @@ export default function DashboardPage() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Bot Durumu</CardTitle>
-                    <Zap className="h-4 w-4 text-yellow-500" />
+                    <Zap className={`h-4 w-4 ${botEnabled ? "text-yellow-500" : "text-muted-foreground"}`} />
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="success">Aktif</Badge>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={botEnabled ? "success" : "destructive"}>
+                          {botEnabled ? "Aktif" : "Pasif"}
+                        </Badge>
+                      </div>
+                      <Switch
+                        checked={botEnabled}
+                        onCheckedChange={handleToggleBot}
+                        disabled={togglingBot}
+                      />
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">Ping: 42ms</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {botEnabled 
+                        ? "Bot bu sunucuda çalışıyor" 
+                        : "Bot bu sunucuda devre dışı"}
+                    </p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">
+                      Diğer sunucular etkilenmez
+                    </p>
                   </CardContent>
                 </Card>
                 <Card>

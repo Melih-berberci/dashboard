@@ -20,6 +20,9 @@ const levelingHandler = require('./handlers/leveling');
 const loggingHandler = require('./handlers/logging');
 const commandHandler = require('./handlers/commands');
 
+// Guild Isolation System
+const { isGuildEnabled, invalidateCache } = require('./utils/guildIsolation');
+
 // ==================== SETTINGS CACHE ====================
 const settingsCache = new Map();
 const CACHE_TTL = 60000; // 1 dakika
@@ -110,8 +113,11 @@ client.on(Events.GuildDelete, (guild) => {
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
   
+  // 🔒 Guild Isolation Check - tek satır kontrol
+  if (!await isGuildEnabled(message.guild.id)) return;
+  
   const settings = await getSettings(message.guild.id);
-  if (!settings?.botEnabled) return;
+  if (!settings) return;
   
   // Moderasyon kontrolleri
   if (settings.moderation?.enabled) {
@@ -133,8 +139,11 @@ client.on(Events.MessageCreate, async (message) => {
 
 // ==================== MEMBER JOIN ====================
 client.on(Events.GuildMemberAdd, async (member) => {
+  // 🔒 Guild Isolation Check
+  if (!await isGuildEnabled(member.guild.id)) return;
+  
   const settings = await getSettings(member.guild.id);
-  if (!settings?.botEnabled) return;
+  if (!settings) return;
   
   // Hoşgeldin
   if (settings.welcome?.enabled) {
@@ -154,8 +163,11 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
 // ==================== MEMBER LEAVE ====================
 client.on(Events.GuildMemberRemove, async (member) => {
+  // 🔒 Guild Isolation Check
+  if (!await isGuildEnabled(member.guild.id)) return;
+  
   const settings = await getSettings(member.guild.id);
-  if (!settings?.botEnabled) return;
+  if (!settings) return;
   
   // Ayrılış mesajı
   if (settings.leave?.enabled) {
@@ -172,6 +184,9 @@ client.on(Events.GuildMemberRemove, async (member) => {
 client.on(Events.MessageDelete, async (message) => {
   if (!message.guild) return;
   
+  // 🔒 Guild Isolation Check
+  if (!await isGuildEnabled(message.guild.id)) return;
+  
   const settings = await getSettings(message.guild.id);
   if (settings?.logging?.messages?.enabled) {
     await loggingHandler.messageDelete(message, settings);
@@ -182,6 +197,9 @@ client.on(Events.MessageDelete, async (message) => {
 client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   if (!newMessage.guild || oldMessage.content === newMessage.content) return;
   if (newMessage.author?.bot) return;
+  
+  // 🔒 Guild Isolation Check
+  if (!await isGuildEnabled(newMessage.guild.id)) return;
   
   const settings = await getSettings(newMessage.guild.id);
   
@@ -199,6 +217,9 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   const guildId = newState.guild?.id || oldState.guild?.id;
   if (!guildId) return;
+  
+  // 🔒 Guild Isolation Check
+  if (!await isGuildEnabled(guildId)) return;
   
   const settings = await getSettings(guildId);
   if (settings?.logging?.voice?.enabled) {
