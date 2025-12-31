@@ -220,6 +220,42 @@ await fetch(`/api/guilds/${guildId}/settings`, {
 ## 🎯 Önemli Notlar
 
 1. **MongoDB URI** her iki serviste de **AYNI** olmalı
-2. Bot cache kullanır (60 saniye TTL) - anlık değişiklikler için beklemek gerekebilir
+2. Bot cache kullanır (30 saniye TTL) - anlık değişiklikler için beklemek gerekebilir
 3. Dashboard'dan bot durumu görülemez (ayrı sistemler)
 4. Her sunucu için ayrı GuildSettings dökümanı oluşturulur
+
+---
+
+## 🚂 Railway Deployment (Tek Platform)
+
+Tüm servisler Railway üzerinde çalışır:
+
+### Proje Yapısı
+```
+Railway Project: chatsubo
+├── Service: dashboard
+│   ├── Repo: Melih-berberci/dashboard
+│   ├── Port: 8080 (otomatik)
+│   └── URL: https://dashboard-xxx.railway.app
+│
+└── Service: discord-bot
+    ├── Repo: Melih-berberci/Discord-Bot
+    ├── Port: Yok (daemon)
+    └── URL: Yok (bot, web değil)
+```
+
+### Environment Variables (Her iki serviste de)
+```env
+MONGODB_URI=mongodb+srv://...
+DISCORD_BOT_TOKEN=xxx (sadece bot)
+DISCORD_CLIENT_ID=xxx
+DISCORD_CLIENT_SECRET=xxx (sadece dashboard)
+NEXTAUTH_SECRET=xxx (sadece dashboard)
+NEXTAUTH_URL=https://dashboard-xxx.railway.app (sadece dashboard)
+```
+
+### Avantajlar
+- ✅ Tek platform, tek fatura
+- ✅ Aynı proje altında yönetim
+- ✅ Shared environment variables
+- ✅ Kolay monitoring
