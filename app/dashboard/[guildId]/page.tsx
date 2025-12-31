@@ -359,7 +359,7 @@ export default function DashboardPage() {
 
   // Socket.io connection for real-time logs
   useEffect(() => {
-    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "dashboard-nine-rho-24.vercel.app";
+    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "";
     
     socketRef.current = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
@@ -393,7 +393,7 @@ export default function DashboardPage() {
       
       setLogsLoading(true);
       try {
-        const response = await fetch(`dashboard-nine-rho-24.vercel.app/api/guilds/${guildId}/logs?limit=100`);
+        const response = await fetch(`/api/guilds/${guildId}/logs?limit=100`);
         if (response.ok) {
           const data = await response.json();
           setLogs(data.logs || []);

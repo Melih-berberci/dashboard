@@ -4,19 +4,19 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              MONOREPO YAPISI                                 │
-│                         (Tek GitHub Repository)                              │
+│                           MULTI-REPO YAPISI                                  │
+│                      (İki Ayrı GitHub Repository)                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │   ┌────────────────────────┐              ┌────────────────────────┐        │
 │   │     📱 DASHBOARD        │              │      🤖 BOT             │        │
 │   │     (Next.js)          │              │     (Discord.js)        │        │
 │   │                        │              │                         │        │
-│   │  • Vercel'de çalışır   │              │  • Railway'de çalışır  │        │
+│   │  • Railway'de çalışır  │              │  • Railway'de çalışır  │        │
 │   │  • OAuth2 ile giriş    │              │  • 7/24 aktif          │        │
 │   │  • Ayarları YAZAR      │              │  • Ayarları OKUR       │        │
 │   │                        │              │                         │        │
-│   │  Root: /               │              │  Root: /bot             │        │
+│   │  Repo: dashboard       │              │  Repo: Discord-Bot      │        │
 │   └───────────┬────────────┘              └───────────┬─────────────┘        │
 │               │                                       │                      │
 │               │         ┌─────────────────┐           │                      │
@@ -52,8 +52,9 @@
 
 ## 📁 Klasör Yapısı
 
+### Repo 1: Melih-berberci/dashboard
 ```
-project/
+dashboard/
 ├── 📁 app/                    # Next.js App Router
 │   ├── api/
 │   │   └── guilds/
@@ -61,81 +62,77 @@ project/
 │   │           ├── route.ts           # Sunucu bilgileri
 │   │           ├── settings/
 │   │           │   └── route.ts       # Ayarları GET/PUT/PATCH
-│   │           └── modules/
-│   │               └── [moduleName]/
-│   │                   └── route.ts   # Tekil modül güncelleme
+│   │           └── toggle/
+│   │               └── route.ts       # Bot aktif/pasif toggle
 │   ├── dashboard/
 │   ├── servers/
 │   └── auth/
 │
-├── 📁 bot/                    # Discord Bot (Railway'e deploy)
-│   ├── src/
-│   │   ├── index.js           # Ana giriş noktası
-│   │   ├── models/
-│   │   │   ├── GuildSettings.js
-│   │   │   └── UserLevel.js
-│   │   └── handlers/
-│   │       ├── welcome.js
-│   │       ├── moderation.js
-│   │       ├── leveling.js
-│   │       ├── logging.js
-│   │       └── commands.js
-│   ├── package.json
-│   ├── railway.json
-│   └── .env.example
-│
 ├── 📁 components/             # React components
 ├── 📁 lib/                    # Utilities
 ├── package.json               # Dashboard dependencies
-├── vercel.json                # Vercel config
 └── ARCHITECTURE.md            # Bu dosya
 ```
 
-## 🚀 Deploy Rehberi
-
-### 1. Vercel'e Dashboard Deploy
-
-```bash
-# Vercel CLI ile
-vercel
-
-# Veya Vercel Dashboard'dan:
-# 1. GitHub repo'yu bağla
-# 2. Root Directory: / (boş bırak)
-# 3. Framework: Next.js
-# 4. Environment Variables ekle
+### Repo 2: Melih-berberci/Discord-Bot
+```
+Discord-Bot/
+├── 📁 src/
+│   ├── index.js               # Ana giriş noktası
+│   ├── models/
+│   │   ├── GuildSettings.js
+│   │   └── UserLevel.js
+│   ├── handlers/
+│   │   ├── welcome.js
+│   │   ├── moderation.js
+│   │   ├── leveling.js
+│   │   ├── logging.js
+│   │   └── commands.js
+│   └── utils/
+│       └── guildIsolation.js  # Guild bazlı izolasyon
+├── package.json
+├── railway.json
+└── .gitignore
 ```
 
-**Environment Variables (Vercel):**
+## 🚀 Deploy Rehberi (Railway)
+
+Tüm servisler Railway üzerinde çalışır.
+
+### 1. Dashboard Deploy
+
+```bash
+# Railway Dashboard'dan:
+# 1. New Project > GitHub Repo
+# 2. Melih-berberci/dashboard seç
+# 3. Environment Variables ekle
+# 4. Deploy otomatik başlar
+```
+
+**Environment Variables (Dashboard):**
 ```
 MONGODB_URI=mongodb+srv://...
 DISCORD_CLIENT_ID=...
 DISCORD_CLIENT_SECRET=...
 DISCORD_BOT_TOKEN=...
 NEXTAUTH_SECRET=...
-NEXTAUTH_URL=https://your-app.vercel.app
+NEXTAUTH_URL=https://dashboard-xxx.railway.app
 ```
 
-### 2. Railway'e Bot Deploy
+### 2. Bot Deploy
 
 ```bash
-# Railway Dashboard'dan:
-# 1. New Project > GitHub Repo
-# 2. Root Directory: bot
-# 3. Start Command: npm start
-# 4. Environment Variables ekle
+# Aynı projede "+ New" > GitHub Repo:
+# 1. Melih-berberci/Discord-Bot seç
+# 2. Environment Variables ekle
+# 3. Deploy otomatik başlar
 ```
 
-**Environment Variables (Railway):**
+**Environment Variables (Bot):**
 ```
 DISCORD_BOT_TOKEN=...
 MONGODB_URI=mongodb+srv://...  (Dashboard ile AYNI!)
 ```
-
-**Railway Settings:**
-- Root Directory: `bot`
-- Start Command: `npm start`
-- Restart Policy: Always
 
 ## 🔗 API Endpoints
 
@@ -200,7 +197,7 @@ await fetch(`/api/guilds/${guildId}/settings`, {
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │   Dashboard  │     │   MongoDB    │     │     Bot      │
-│   (Vercel)   │     │   (Atlas)    │     │  (Railway)   │
+│  (Railway)   │     │   (Atlas)    │     │  (Railway)   │
 └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
        │                    │                    │
        │  PUT /settings     │                    │
